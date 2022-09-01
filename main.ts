@@ -29,6 +29,16 @@ namespace proportionalFont {
     A3880200 B3D80100 D2160000 233F0200 F9000000 8B9F0000 25822002`;
   const fontDataLength: number = 95;
 
+    export enum DIRECTION {
+        HORIZONTAL, 
+        UPSIDEDOWN, 
+        TOP, 
+        BOTTOM
+    }
+
+
+    let scrollDir : DIRECTION = DIRECTION.HORIZONTAL
+
   /**
    * Obtain the character in the font. Return space if not in list.
    */
@@ -52,17 +62,63 @@ namespace proportionalFont {
     return (glyph >> (3 + col * 5)) & 31;
   }
 
+// Relative mappings of where each pixel comes from 
+const mapping = [
+    [
+        [[0, 1], [0, 2], [0, 3], [0, 4], [10, 0]],
+        [[1, 1], [1, 2], [1, 3], [1, 4], [10, 1]],
+        [[2, 1], [2, 2], [2, 3], [2, 4], [10, 2]],
+        [[3, 1], [3, 2], [3, 3], [3, 4], [10, 3]],
+        [[4, 1], [4, 2], [4, 3], [4, 4], [10, 4]],
+    ]
+
+]
+  
+
   /**
    * Display the column by scrolling the display to the left by 1 pixel.
    */
   function displayColumn(data: number) {
     let brightness = led.brightness();
+    // 1. Make a copy of old data
+    let existing  = [
+        [false, false, false, false, false],
+        [false, false, false, false, false],
+        [false, false, false, false, false],
+        [false, false, false, false, false],
+        [false, false, false, false, false],
+        ]
     for (let row = 0; row < 5; ++row) {
-      for (let col = 0; col < 4; ++col) {
-        led.plotBrightness(col, row, led.point(col + 1, row) ? brightness : 0);
+        for(let col = 0; col < 5; ++col) {
+            existing[row][col] = led.point(row, col)
+        }
+    }
+
+      let newColumn = [false, false, false, false, false];
+      for(let row=0; row<5;++row) {
+          newColumn[row] = data & 1 ? true : false;
+          data >>= 1;
       }
-      led.plotBrightness(4, row, (data & 1) > 0 ? brightness : 0);
-      data >>= 1;
+
+
+
+    // row and col are data row and col. 
+    for (let row = 0; row < 5; ++row) {
+      for (let col = 0; col < 5; ++col) {
+        // Do the scrolling
+        const newLoc = mapping[scrollDir][row][col]
+        const newR = newLoc[0]
+        const newC = newLoc[1]
+        if(newR==10) {
+            // New Data
+            const useR = newR - 10
+            led.plotBrightness(row, col, newColumn[newC] ? brightness : 0);
+        } else {
+            // Scroll : Use existing brightness        
+            led.plotBrightness(row, col, existing[newR][newC] ? brightness: 0 );
+        }
+      }
+      
     }
   }
 
@@ -75,6 +131,12 @@ namespace proportionalFont {
   export function showNumber(num: number, interval: number = 150) {
     showString(num.toString(), interval);
   }
+
+  //% block="set scroll direction to %direction "
+  //% group="LED output"
+    export function setDirection(direction: DIRECTION) {
+        scrollDir = direction
+    }
 
   /**
    * Scroll some text on the screen, with the given speed of scroll per pixel.
