@@ -30,15 +30,21 @@ namespace proportionalFont {
   const fontDataLength: number = 95;
 
     export enum DIRECTION {
-        HORIZONTAL, 
-        UPSIDEDOWN, 
-        TOP, 
-        BOTTOM
+        Normal, 
+        UpsideDown, 
+        LogoOnLeft, 
+        LogoOnRight
     }
 
-
-    let scrollDir : DIRECTION = DIRECTION.HORIZONTAL
-
+    let scrollDir : DIRECTION = DIRECTION.Normal
+    // Existing screen state
+    let existing : boolean[][] = [
+        [false, false, false, false, false],
+        [false, false, false, false, false],
+        [false, false, false, false, false],
+        [false, false, false, false, false],
+        [false, false, false, false, false],
+    ]
   /**
    * Obtain the character in the font. Return space if not in list.
    */
@@ -62,63 +68,66 @@ namespace proportionalFont {
     return (glyph >> (3 + col * 5)) & 31;
   }
 
-// Relative mappings of where each pixel comes from 
-const mapping = [
-    [
-        [[0, 1], [0, 2], [0, 3], [0, 4], [10, 0]],
-        [[1, 1], [1, 2], [1, 3], [1, 4], [10, 1]],
-        [[2, 1], [2, 2], [2, 3], [2, 4], [10, 2]],
-        [[3, 1], [3, 2], [3, 3], [3, 4], [10, 3]],
-        [[4, 1], [4, 2], [4, 3], [4, 4], [10, 4]],
-    ]
-
-]
-  
+    /**
+     * Get the existing screen state
+     */
+    function getExisting() {
+        for (let x = 0; x < 5; ++x) {
+            for(let y = 0; y < 5; ++y) {
+                existing[x][y] = led.point(x, y)
+            }
+        }
+    }
 
   /**
    * Display the column by scrolling the display to the left by 1 pixel.
    */
   function displayColumn(data: number) {
-    let brightness = led.brightness();
-    // 1. Make a copy of old data
-    let existing  = [
-        [false, false, false, false, false],
-        [false, false, false, false, false],
-        [false, false, false, false, false],
-        [false, false, false, false, false],
-        [false, false, false, false, false],
-        ]
-    for (let row = 0; row < 5; ++row) {
-        for(let col = 0; col < 5; ++col) {
-            existing[row][col] = led.point(row, col)
-        }
+    const brightness = led.brightness();
+    // Get new pixels
+    getExisting()
+    let newColumn : boolean[] = [false, false, false, false, false];
+    for (let x=0; x<5;++x) {
+        newColumn[x] = data & 1 ? true : false;
+        data >>= 1;
     }
 
-      let newColumn = [false, false, false, false, false];
-      for(let row=0; row<5;++row) {
-          newColumn[row] = data & 1 ? true : false;
-          data >>= 1;
-      }
-
-
-
-    // row and col are data row and col. 
-    for (let row = 0; row < 5; ++row) {
-      for (let col = 0; col < 5; ++col) {
-        // Do the scrolling
-        const newLoc = mapping[scrollDir][row][col]
-        const newR = newLoc[0]
-        const newC = newLoc[1]
-        if(newR==10) {
-            // New Data
-            const useR = newR - 10
-            led.plotBrightness(row, col, newColumn[newC] ? brightness : 0);
-        } else {
-            // Scroll : Use existing brightness        
-            led.plotBrightness(row, col, existing[newR][newC] ? brightness: 0 );
-        }
-      }
-      
+    // Redraw screen
+    let pixel : boolean = false
+    for (let x = 0; x < 5; ++x) {
+      for (let y = 0; y < 5; ++y) {
+          switch (scrollDir) {
+              case DIRECTION.UpsideDown:
+                  if (x == 0) {
+                      pixel = newColumn[4-y]
+                  } else {
+                      pixel = existing[x - 1][y]
+                  }
+              break;
+              case DIRECTION.LogoOnRight:
+                  if (y == 0) {
+                      pixel = newColumn[x]
+                  } else {
+                      pixel = existing[x][y-1]
+                  }
+              break;
+              case DIRECTION.LogoOnLeft:
+                  if (y == 4) {
+                      pixel = newColumn[4-x]
+                  } else {
+                      pixel = existing[x][y + 1]
+                  }
+              break;
+              default: 
+                if(x==4) {
+                    pixel = newColumn[y]
+                } else {
+                    pixel = existing[x+1][y]
+                }
+                break;
+          }
+          led.plotBrightness(x, y, pixel ? brightness : 0)
+      }      
     }
   }
 
@@ -132,11 +141,6 @@ const mapping = [
     showString(num.toString(), interval);
   }
 
-  //% block="set scroll direction to %direction "
-  //% group="LED output"
-    export function setDirection(direction: DIRECTION) {
-        scrollDir = direction
-    }
 
   /**
    * Scroll some text on the screen, with the given speed of scroll per pixel.
@@ -176,6 +180,11 @@ const mapping = [
       basic.pause(interval);
     }
   }
+    //% block="set scroll direction to %direction "
+    //% group="LED output" 
+    export function setDirection(direction: DIRECTION) {
+        scrollDir = direction
+    }
 
   /**
    * Get the width of the number, in the number of LED columns.
